@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../api/client';
+import { wsClient } from '../api/websocket';
 import type { Asset } from '../types';
 import { Plus } from 'lucide-react';
 
@@ -25,7 +26,16 @@ export default function Assets() {
     name: '', type: '', status: 'STANDBY', make: '', model: '', driver_version: '', firmware_version: ''
   });
 
-  useEffect(() => { loadAssets(); }, []);
+  useEffect(() => { 
+    loadAssets(); 
+    
+    const unsub = wsClient.subscribe("TELEMETRY_UPDATE", (msg: any) => {
+       setAssets(prev => prev.map(a => 
+          a.asset_id === msg.asset_id ? { ...a, status: msg.telemetry.connection_status === 'CONNECTED' ? 'ACTIVE' : 'OFFLINE' } : a
+       ));
+    });
+    return unsub;
+  }, []);
 
   const loadAssets = async () => {
     try {

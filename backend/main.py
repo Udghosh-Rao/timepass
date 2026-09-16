@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import assets, missions, events
+from app.api import assets, missions, events, telemetry, ws
 
 app = FastAPI(title="AstraOS Backend")
 
@@ -15,6 +15,8 @@ app.add_middleware(
 app.include_router(assets.router)
 app.include_router(missions.router)
 app.include_router(events.router)
+app.include_router(telemetry.router)
+app.include_router(ws.router)
 
 
 @app.get("/")

@@ -49,6 +49,23 @@ CREATE TABLE IF NOT EXISTS events (
     FOREIGN KEY(asset_id) REFERENCES assets(asset_id)
 )
 """)
+conn.execute("""
+CREATE TABLE IF NOT EXISTS telemetry (
+    telemetry_id TEXT PRIMARY KEY,
+    asset_id TEXT,
+    timestamp TEXT DEFAULT (datetime('now')),
+    latitude REAL,
+    longitude REAL,
+    altitude REAL,
+    heading REAL,
+    speed REAL,
+    battery_pct REAL,
+    health_status TEXT,
+    connection_status TEXT,
+    mission_id TEXT,
+    FOREIGN KEY(asset_id) REFERENCES assets(asset_id)
+)
+""")
 conn.commit()
 
 # Only seed if empty

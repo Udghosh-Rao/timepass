@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiClient } from '../api/client';
+import { wsClient } from '../api/websocket';
 import type { Event } from '../types';
 
 function severityBadge(severity: string) {
@@ -21,6 +22,11 @@ export default function Events() {
       .then(data => setEvents(data))
       .catch(() => setError('Unable to load data'))
       .finally(() => setLoading(false));
+
+    const unsub = wsClient.subscribe("EVENT_NEW", (msg: any) => {
+       setEvents(prev => [msg.event, ...prev]);
+    });
+    return unsub;
   }, []);
 
   if (loading) return <div className="loading"><div className="spinner"></div>Loading events…</div>;

@@ -1,148 +1,29 @@
 # AstraOS
 
-AstraOS is an operational defence software platform for managing and monitoring unmanned systems (UGV, UAV, AUV). It is designed to eventually receive data from simulators, ROS 2, and physical vehicles via the Standard Vehicle Interface (SVI).
-
----
+AstraOS is an operational software platform designed to manage and monitor unmanned systems. This repository contains the core software components: the operator frontend, the FastAPI backend (with PostgreSQL/PostGIS support), and a telemetry data simulator.
 
 ## Architecture
 
-```
-Operator Application (React)
-        ↓
-AstraOS API (FastAPI)
-        ↓
-Service Layer
-        ↓
-Repository Layer
-        ↓
-PostgreSQL / PostGIS
-```
+AstraOS is built with a decoupled architecture:
+- **Frontend**: React + TypeScript + Vite. It provides the Operator Application (UI, Maps, Live Telemetry).
+- **Backend**: FastAPI + Python. It provides the REST API, Telemetry Ingestion, Event Engine, and WebSocket broadcasting.
+- **Simulator**: A Python tool to generate realistic asset movement, battery drain, and telemetry updates.
+- **Database**: PostgreSQL with PostGIS (for spatial queries) in production, and SQLite for rapid local development.
 
-```
-                 ASTRAOS
-                    |
-        ┌───────────┴───────────┐
-        |                       |
-   AstraOS Core          Operator Application
-        |
-   ┌────┼─────┐
-   |    |     |
-  SVI  Data  Operational
-  Layer       Systems
-   |
-   ├── UGV
-   ├── UAV
-   └── AUV
-```
+### Telemetry & WebSocket Flow
+
+1. The **Simulator** (or an actual vehicle) sends periodic POST requests to `/api/v1/assets/{asset_id}/telemetry`.
+2. The **Backend** receives the payload, saves it to the database, and processes it through the **Event Engine** (e.g., triggering `LOW_BATTERY` or `ASSET_CONNECTED`).
+3. The Backend immediately broadcasts the telemetry and any generated events to all connected Operator Applications via a **WebSocket** connection on `/api/v1/ws`.
+4. The **Frontend** receives the live feed and dynamically updates the charts, maps, and asset tables without polling.
 
 ---
 
-## Repository Structure
+## Getting Started (Local Development)
 
-```
-astraos/
-├── frontend/          # Operator Application (React, TypeScript, Vite)
-├── backend/           # AstraOS API (FastAPI, Python 3.12+)
-├── docs/              # Documentation
-├── simulator/         # (Future) Vehicle simulator
-└── docker-compose.yml # PostgreSQL/PostGIS + services
-```
+You can run AstraOS locally without Docker or PostGIS using the built-in SQLite development mode.
 
----
-
-## Backend Structure
-
-```
-backend/
-├── app/
-│   ├── api/               # FastAPI route handlers (one file per domain)
-│   │   ├── assets.py
-│   │   ├── missions.py
-│   │   └── events.py
-│   ├── core/
-│   │   └── database.py    # SQLAlchemy engine, Base, get_db
-│   ├── models/            # SQLAlchemy ORM models (one file per domain)
-│   │   ├── user.py
-│   │   ├── asset.py
-│   │   ├── telemetry.py
-│   │   ├── mission.py
-│   │   ├── event.py
-│   │   ├── command.py
-│   │   └── observation.py
-│   ├── schemas/           # Pydantic request/response schemas (one file per domain)
-│   │   ├── user.py
-│   │   ├── asset.py
-│   │   ├── telemetry.py
-│   │   ├── mission.py
-│   │   ├── event.py
-│   │   ├── command.py
-│   │   └── observation.py
-│   ├── services/          # Business logic layer (future)
-│   ├── repositories/      # Database access layer (future)
-│   └── realtime/          # WebSocket layer (future)
-├── alembic/               # Database migrations
-├── main.py                # Production entry point (PostgreSQL/PostGIS)
-├── main_dev.py            # Development entry point (SQLite, no PostGIS)
-├── seed_dev.py            # Development database seeder (SQLite only)
-└── requirements.txt
-```
-
----
-
-## Frontend Structure
-
-```
-frontend/
-└── src/
-    ├── api/
-    │   └── client.ts      # Centralised API client (all fetch calls live here)
-    ├── components/
-    │   ├── Sidebar.tsx    # Application navigation
-    │   └── Topbar.tsx     # Global status bar
-    ├── layouts/
-    │   └── AppLayout.tsx  # Application shell (Sidebar + Topbar + main content)
-    ├── pages/
-    │   ├── Overview.tsx   # System overview dashboard
-    │   ├── Assets.tsx     # Asset list
-    │   ├── AssetDetail.tsx # Individual asset view
-    │   ├── Missions.tsx   # Mission list (read-only)
-    │   └── Events.tsx     # Events list (read-only)
-    ├── types/
-    │   └── index.ts       # Shared TypeScript interfaces
-    ├── App.tsx            # Router configuration
-    └── main.tsx           # Application entry point
-```
-
----
-
-## Database Models
-
-| Table          | Description                                    |
-|----------------|------------------------------------------------|
-| `users`        | Operator accounts and roles                    |
-| `assets`       | Registered unmanned systems (UGV, UAV, AUV)   |
-| `missions`     | Mission records assigned to assets             |
-| `telemetry`    | Time-series telemetry from assets (PostGIS)    |
-| `events`       | System events generated by assets              |
-| `commands`     | Commands issued to assets                      |
-| `observations` | Geospatial observations from assets (PostGIS)  |
-
----
-
-## Environment Variables
-
-| Variable       | Description                                      | Default                                   |
-|----------------|--------------------------------------------------|-------------------------------------------|
-| `DATABASE_URL` | PostgreSQL connection string                     | `postgresql://astra:astra_password@db/astra` |
-| `API_BASE_URL` | Frontend base URL for API calls                  | `http://localhost:8000/api/v1`            |
-
-Do **not** commit secrets or credentials to source control.
-
----
-
-## Running Locally (Development — No Docker Required)
-
-### 1. Backend (SQLite dev mode)
+### 1. Start the Backend
 
 ```bash
 cd backend
@@ -150,17 +31,16 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# Seed the local SQLite dev database
-python seed_dev.py
+# Seed the local SQLite database
+python3 seed_dev.py
 
-# Start the dev backend (SQLite, no PostGIS required)
+# Start the FastAPI server on port 8000
 uvicorn main_dev:app --host 0.0.0.0 --port 8000
 ```
 
-Backend available at: `http://localhost:8000`
-API docs (Swagger): `http://localhost:8000/docs`
+### 2. Start the Frontend
 
-### 2. Frontend (Operator Application)
+In a new terminal window:
 
 ```bash
 cd frontend
@@ -168,98 +48,28 @@ npm install
 npm run dev
 ```
 
-Operator Application available at: `http://localhost:5173`
+Open [http://localhost:5173](http://localhost:5173) to view the Operator Application.
 
----
+### 3. Start the Data Simulator
 
-## Running with PostgreSQL/PostGIS (Production-style)
-
-### Prerequisites
-
-- Docker and Docker Compose installed
-- (Or) PostgreSQL 15+ with PostGIS 3.3+ installed
-
-### Start with Docker Compose
+To see live data flowing into the platform, run the simulator in a third terminal window. It will automatically detect the seeded asset and start streaming telemetry.
 
 ```bash
-docker-compose up
+cd simulator
+python3 main.py
 ```
 
-This starts:
-- `db`: `postgis/postgis:15-3.3-alpine` on port 5432
-- `backend`: FastAPI on port 8000
-- `frontend`: Vite dev server on port 5173
+### Environment Variables
 
-### Run Alembic Migrations
+The backend relies on the following environment variables (defined in `.env`):
+- `DATABASE_URL`: Connection string to the PostgreSQL database (for production).
+- `API_URL`: (Simulator) The base URL for the AstraOS API.
+- `PUBLISH_INTERVAL`: (Simulator) How often telemetry is sent, in seconds.
 
+## Running Tests
+
+To run the core test suite:
 ```bash
 cd backend
-source venv/bin/activate
-alembic upgrade head
+pytest
 ```
-
-### Start Backend (PostgreSQL)
-
-```bash
-cd backend
-source venv/bin/activate
-DATABASE_URL=postgresql://astra:astra_password@localhost:5432/astra uvicorn main:app --host 0.0.0.0 --port 8000
-```
-
----
-
-## API Reference
-
-| Method | Endpoint                    | Description            |
-|--------|-----------------------------|------------------------|
-| GET    | `/api/health`               | System health check    |
-| GET    | `/api/v1/assets`            | List all assets        |
-| POST   | `/api/v1/assets`            | Register a new asset   |
-| GET    | `/api/v1/assets/{id}`       | Get asset by ID        |
-| PATCH  | `/api/v1/assets/{id}`       | Update asset           |
-| GET    | `/api/v1/missions`          | List all missions      |
-| GET    | `/api/v1/events`            | List all events        |
-
----
-
-## Operator Application Pages
-
-| Page         | Route             | Description                                 |
-|--------------|-------------------|---------------------------------------------|
-| Overview     | `/`               | System stats (assets, missions, events)     |
-| Assets       | `/assets`         | Asset list from database                    |
-| Asset Detail | `/assets/:id`     | Individual asset information                |
-| Missions     | `/missions`       | Mission list (read-only, from database)     |
-| Events       | `/events`         | Event log (read-only, from database)        |
-
----
-
-## Desktop Application
-
-The Operator Application is built with React/TypeScript/Vite and is designed to be packaged as a cross-platform desktop application.
-
-Current status: **Browser application only**
-
-The architecture is ready for Tauri or Electron packaging without changes:
-```
-# Future packaging (not yet implemented)
-npm run build
-# Wrap with Tauri or Electron
-```
-
----
-
-## Development Notes
-
-- `main_dev.py` is a development-only backend that uses SQLite directly. It does not use SQLAlchemy models or PostGIS. It exists only to allow frontend development when a PostgreSQL instance is unavailable.
-- `main.py` is the production backend. It uses the full SQLAlchemy model stack with PostGIS.
-- Geometry columns (PostGIS) are used in `telemetry.position` and `observations.location`. These are production-only features and require PostgreSQL + PostGIS.
-- Alembic migrations in `alembic/versions/001_core.py` are the authoritative schema source.
-
-cd "/Users/udghoshrao/Downloads/astra os /frontend"
-npm run dev
-
-cd "/Users/udghoshrao/Downloads/astra os /backend"
-source venv/bin/activate
-python3 seed_dev.py
-uvicorn main_dev:app --host 0.0.0.0 --port 8000

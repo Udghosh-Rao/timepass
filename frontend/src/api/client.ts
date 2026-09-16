@@ -21,6 +21,12 @@ export const apiClient = {
     return res.json();
   },
 
+  getAssetTelemetry: async (id: string, limit: number = 100): Promise<any[]> => {
+    const res = await fetch(`${API_BASE_URL}/assets/${id}/telemetry?limit=${limit}`);
+    if (!res.ok) throw new Error("Unable to load data");
+    return res.json();
+  },
+
   createAsset: async (data: Partial<Asset>): Promise<Asset> => {
     const res = await fetch(`${API_BASE_URL}/assets`, {
       method: 'POST',

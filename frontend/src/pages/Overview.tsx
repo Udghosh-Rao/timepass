@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiClient } from '../api/client';
+import { wsClient } from '../api/websocket';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 interface SystemStats {
   assets: number;
@@ -7,16 +9,11 @@ interface SystemStats {
   events: number;
 }
 
-function statusBadge(ok: boolean) {
-  return ok
-    ? <span className="status-value ok">Operational</span>
-    : <span className="status-value error">Unavailable</span>;
-}
-
 export default function Overview() {
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [backendOk, setBackendOk] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fleetBattery, setFleetBattery] = useState<{name: string, battery: number}[]>([]);
 
   useEffect(() => {
     const load = async () => {
@@ -29,6 +26,17 @@ export default function Overview() {
           apiClient.getEvents(),
         ]);
         setStats({ assets: assets.length, missions: missions.length, events: events.length });
+        
+        // Initial fleet battery from API (we fetch latest telemetry for each asset)
+        const batData = await Promise.all(assets.map(async (a: any) => {
+          try {
+             const tel = await apiClient.getAssetTelemetry(a.asset_id, 1);
+             return { name: a.name, battery: tel.length ? tel[0].battery_pct : 0, id: a.asset_id };
+          } catch {
+             return { name: a.name, battery: 0, id: a.asset_id };
+          }
+        }));
+        setFleetBattery(batData);
       } catch {
         setBackendOk(false);
       } finally {
@@ -36,6 +44,23 @@ export default function Overview() {
       }
     };
     load();
+    
+    const unsubs = [
+      wsClient.subscribe("EVENT_NEW", () => {
+        setStats(s => s ? { ...s, events: s.events + 1 } : s);
+      }),
+      wsClient.subscribe("TELEMETRY_UPDATE", (msg) => {
+        setFleetBattery(prev => {
+           const next = [...prev];
+           const idx = next.findIndex(a => a.id === msg.asset_id);
+           if(idx !== -1) {
+             next[idx].battery = msg.telemetry.battery_pct;
+           }
+           return next;
+        });
+      })
+    ];
+    return () => unsubs.forEach(u => u());
   }, []);
 
   if (loading) {
@@ -49,7 +74,6 @@ export default function Overview() {
         <p className="page-subtitle">AstraOS platform health and asset summary</p>
       </div>
 
-      {/* System Status Panel */}
       <div className="card" style={{ marginBottom: 24 }}>
         <div className="card-header">
           <span className="card-title">System Status</span>
@@ -57,23 +81,19 @@ export default function Overview() {
         <div className="card-body">
           <div className="status-indicator">
             <span className="status-label">Backend</span>
-            {statusBadge(backendOk === true)}
+            {backendOk ? <span className="status-value ok">Operational</span> : <span className="status-value error">Unavailable</span>}
           </div>
           <div className="status-indicator">
             <span className="status-label">Database</span>
-            {stats !== null
-              ? <span className="status-value ok">Connected</span>
-              : <span className="status-value error">Unavailable</span>
-            }
+            {stats !== null ? <span className="status-value ok">Connected</span> : <span className="status-value error">Unavailable</span>}
           </div>
           <div className="status-indicator">
-            <span className="status-label">SVI</span>
-            <span className="status-value unknown">Not Configured</span>
+            <span className="status-label">SVI Stream</span>
+            {fleetBattery.some(b => b.battery > 0) ? <span className="status-value ok">Active</span> : <span className="status-value unknown">No active telemetry</span>}
           </div>
         </div>
       </div>
 
-      {/* Stats */}
       {backendOk && stats && (
         <div className="stat-grid">
           <div className="stat-card">
@@ -93,6 +113,37 @@ export default function Overview() {
           </div>
         </div>
       )}
+
+      {/* Real Chart */}
+      <div className="card" style={{ marginBottom: 24 }}>
+         <div className="card-header">
+            <span className="card-title">Fleet Battery Levels</span>
+         </div>
+         <div className="card-body" style={{ height: 260 }}>
+            {fleetBattery.length === 0 ? (
+               <div className="empty-state">
+                  <div className="icon">⚡️</div>
+                  <div className="title">No telemetry data available</div>
+               </div>
+            ) : (
+               <ResponsiveContainer width="100%" height="100%">
+                 <BarChart data={fleetBattery} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                   <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} />
+                   <YAxis stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} domain={[0, 100]} />
+                   <Tooltip 
+                     cursor={{fill: 'var(--bg-hover)'}}
+                     contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13 }} 
+                   />
+                   <Bar dataKey="battery" radius={[4, 4, 0, 0]}>
+                     {fleetBattery.map((entry, index) => (
+                       <Cell key={`cell-${index}`} fill={entry.battery > 20 ? 'var(--accent)' : 'var(--red)'} />
+                     ))}
+                   </Bar>
+                 </BarChart>
+               </ResponsiveContainer>
+            )}
+         </div>
+      </div>
 
       {!backendOk && (
         <div className="error-banner">
