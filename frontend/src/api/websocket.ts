@@ -8,8 +8,8 @@ class WebSocketClient {
   connect() {
     if (this.ws) return;
     
-    // In Vite dev, assume WS is same host but port 8000
-    this.ws = new WebSocket('ws://localhost:8000/api/v1/ws');
+    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/api/v1/ws';
+    this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
       console.log('WS Connected');

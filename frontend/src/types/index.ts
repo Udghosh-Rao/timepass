@@ -3,7 +3,7 @@ export interface Asset {
   name: string;
   type: string;
   status: string;
-  capabilities: any;
+  capabilities: Record<string, unknown> | null;
   make: string;
   model: string;
   driver_version: string;
@@ -28,4 +28,26 @@ export interface Event {
   event_type: string;
   severity: string;
   timestamp: string;
+}
+
+export interface Telemetry {
+  telemetry_id?: string;
+  timestamp: string;
+  latitude: number;
+  longitude: number;
+  altitude: number;
+  heading: number;
+  speed: number;
+  course: number;
+  battery_pct: number;
+  health_status: string;
+  connection_status: string;
+  mission_id?: string | null;
+}
+
+export interface WebSocketMessage {
+  type: string;
+  asset_id?: string;
+  telemetry?: Telemetry;
+  event?: Event;
 }

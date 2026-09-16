@@ -19,11 +19,19 @@ AstraOS is built with a decoupled architecture:
 
 ---
 
-## Getting Started (Local Development)
+## Database Architecture
 
-You can run AstraOS locally without Docker or PostGIS using the built-in SQLite development mode.
+AstraOS is strictly designed to run on **PostgreSQL with PostGIS**. This is required for advanced geospatial telemetry indexing.
 
-### 1. Start the Backend
+While a fallback SQLite `main_dev.py` exists for rapid UI testing without Docker, it should **not** be used for core development involving actual location services.
+
+---
+
+## Getting Started
+
+### 1. Start the Backend (PostgreSQL)
+
+Ensure you have a PostgreSQL instance running with the PostGIS extension.
 
 ```bash
 cd backend
@@ -31,12 +39,18 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# Seed the local SQLite database
-python3 seed_dev.py
+# Configure your database
+cp .env.example .env
+# Edit .env and set DATABASE_URL=postgresql://user:password@localhost/astra
 
-# Start the FastAPI server on port 8000
-uvicorn main_dev:app --host 0.0.0.0 --port 8000
+# Run migrations to build the schema
+alembic upgrade head
+
+# Start the AstraOS server
+uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
+
+*(Optional) For quick UI-only dev without Postgres, you can use `python3 seed_dev.py` and `uvicorn main_dev:app` to run against a local SQLite file.*
 
 ### 2. Start the Frontend
 
@@ -45,6 +59,11 @@ In a new terminal window:
 ```bash
 cd frontend
 npm install
+
+# Configure API URLs
+cp .env.example .env
+# Ensure VITE_API_BASE_URL and VITE_WS_URL point to your backend
+
 npm run dev
 ```
 
@@ -52,19 +71,27 @@ Open [http://localhost:5173](http://localhost:5173) to view the Operator Applica
 
 ### 3. Start the Data Simulator
 
-To see live data flowing into the platform, run the simulator in a third terminal window. It will automatically detect the seeded asset and start streaming telemetry.
+To see live data flowing into the platform, run the simulator in a third terminal window.
 
 ```bash
 cd simulator
+# Ensure API_URL in .env points to the backend
 python3 main.py
 ```
 
 ### Environment Variables
 
-The backend relies on the following environment variables (defined in `.env`):
-- `DATABASE_URL`: Connection string to the PostgreSQL database (for production).
-- `API_URL`: (Simulator) The base URL for the AstraOS API.
-- `PUBLISH_INTERVAL`: (Simulator) How often telemetry is sent, in seconds.
+**Backend (`backend/.env`)**
+- `DATABASE_URL`: Connection string to PostgreSQL (e.g. `postgresql://user:pass@localhost:5432/astra`)
+- `LOW_BATTERY_THRESHOLD`: Float value triggering battery events (default: `20.0`)
+
+**Frontend (`frontend/.env`)**
+- `VITE_API_BASE_URL`: REST API path (default: `http://localhost:8000/api/v1`)
+- `VITE_WS_URL`: WebSocket path (default: `ws://localhost:8000/api/v1/ws`)
+
+**Simulator (`simulator/.env`)**
+- `API_URL`: The base URL for the AstraOS API.
+- `PUBLISH_INTERVAL`: How often telemetry is sent, in seconds.
 
 ## Running Tests
 
@@ -73,11 +100,3 @@ To run the core test suite:
 cd backend
 pytest
 ```
-
-cd "/Users/udghoshrao/Downloads/astra os /backend"
-source venv/bin/activate
-python3 seed_dev.py
-uvicorn main_dev:app --host 0.0.0.0 --port 8000
-
-cd "/Users/udghoshrao/Downloads/astra os /frontend"
-npm run dev

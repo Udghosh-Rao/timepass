@@ -5,13 +5,14 @@ import { wsClient } from '../api/websocket';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import type { Asset, Telemetry, Event, WebSocketMessage } from '../types';
 
 export default function AssetDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [asset, setAsset] = useState<any>(null);
-  const [telemetry, setTelemetry] = useState<any[]>([]);
-  const [events, setEvents] = useState<any[]>([]);
+  const [asset, setAsset] = useState<Asset | null>(null);
+  const [telemetry, setTelemetry] = useState<Telemetry[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
@@ -63,10 +64,10 @@ export default function AssetDetail() {
   useEffect(() => {
     if (!id) return;
     const unsubs = [
-      wsClient.subscribe("TELEMETRY_UPDATE", (msg) => {
-        if (msg.asset_id !== id) return;
+      wsClient.subscribe("TELEMETRY_UPDATE", (msg: WebSocketMessage) => {
+        if (msg.asset_id !== id || !msg.telemetry) return;
         setTelemetry(prev => {
-          const newTel = [...prev, msg.telemetry];
+          const newTel = [...prev, msg.telemetry!];
           if (newTel.length > 20) newTel.shift();
           return newTel;
         });
@@ -77,9 +78,9 @@ export default function AssetDetail() {
            map.current.panTo([msg.telemetry.longitude, msg.telemetry.latitude]);
         }
       }),
-      wsClient.subscribe("EVENT_NEW", (msg) => {
-         if (msg.event.asset_id !== id) return;
-         setEvents(prev => [msg.event, ...prev].slice(0, 10));
+      wsClient.subscribe("EVENT_NEW", (msg: WebSocketMessage) => {
+         if (!msg.event || msg.event.asset_id !== id) return;
+         setEvents(prev => [msg.event!, ...prev].slice(0, 10));
       })
     ];
     return () => unsubs.forEach(u => u());

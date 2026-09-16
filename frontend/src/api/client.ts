@@ -1,10 +1,11 @@
-import type { Asset, Mission, Event } from '../types';
+import type { Asset, Mission, Event, Telemetry } from '../types';
 
-const API_BASE_URL = 'http://localhost:8000/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
 export const apiClient = {
   getSystemHealth: async () => {
-    const res = await fetch('http://localhost:8000/api/health');
+    const healthUrl = API_BASE_URL.replace('/api/v1', '/api/health');
+    const res = await fetch(healthUrl);
     if (!res.ok) throw new Error("Backend unavailable");
     return res.json();
   },
@@ -21,7 +22,7 @@ export const apiClient = {
     return res.json();
   },
 
-  getAssetTelemetry: async (id: string, limit: number = 100): Promise<any[]> => {
+  getAssetTelemetry: async (id: string, limit: number = 100): Promise<Telemetry[]> => {
     const res = await fetch(`${API_BASE_URL}/assets/${id}/telemetry?limit=${limit}`);
     if (!res.ok) throw new Error("Unable to load data");
     return res.json();

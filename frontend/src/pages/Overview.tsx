@@ -1,63 +1,68 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../api/client';
 import { wsClient } from '../api/websocket';
+import type { Asset, Mission, Event, Telemetry, WebSocketMessage } from '../types';
+import { Activity, Battery, Map as MapIcon, Wifi, AlertCircle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
-interface SystemStats {
-  assets: number;
-  missions: number;
-  events: number;
-}
-
 export default function Overview() {
-  const [stats, setStats] = useState<SystemStats | null>(null);
-  const [backendOk, setBackendOk] = useState<boolean | null>(null);
+  const navigate = useNavigate();
+  const [stats, setStats] = useState({
+    totalAssets: 0,
+    connectedAssets: 0,
+    activeMissions: 0,
+    recentEvents: 0
+  });
+  const [batteryData, setBatteryData] = useState<{name: string, battery: number}[]>([]);
   const [loading, setLoading] = useState(true);
-  const [fleetBattery, setFleetBattery] = useState<{name: string, battery: number}[]>([]);
 
   useEffect(() => {
     const load = async () => {
       try {
-        await apiClient.getSystemHealth();
-        setBackendOk(true);
         const [assets, missions, events] = await Promise.all([
           apiClient.getAssets(),
           apiClient.getMissions(),
-          apiClient.getEvents(),
+          apiClient.getEvents()
         ]);
-        setStats({ assets: assets.length, missions: missions.length, events: events.length });
         
-        // Initial fleet battery from API (we fetch latest telemetry for each asset)
-        const batData = await Promise.all(assets.map(async (a: any) => {
-          try {
-             const tel = await apiClient.getAssetTelemetry(a.asset_id, 1);
-             return { name: a.name, battery: tel.length ? tel[0].battery_pct : 0, id: a.asset_id };
-          } catch {
-             return { name: a.name, battery: 0, id: a.asset_id };
-          }
+        // Fetch latest state for battery chart
+        const batData = await Promise.all(assets.map(async (a: Asset) => {
+           try {
+             const tel = await fetch(import.meta.env.VITE_API_BASE_URL + `/assets/${a.asset_id}/state`).then(r => r.json());
+             return { name: a.name, battery: tel?.battery_pct || 0 };
+           } catch { return { name: a.name, battery: 0 }; }
         }));
-        setFleetBattery(batData);
-      } catch {
-        setBackendOk(false);
+
+        setStats({
+          totalAssets: assets.length,
+          connectedAssets: assets.filter((a: Asset) => a.status === 'ACTIVE').length,
+          activeMissions: missions.filter((m: Mission) => m.status === 'ACTIVE').length,
+          recentEvents: events.length
+        });
+        setBatteryData(batData);
+      } catch (err) {
+        console.error(err);
       } finally {
         setLoading(false);
       }
     };
     load();
-    
+
     const unsubs = [
-      wsClient.subscribe("EVENT_NEW", () => {
-        setStats(s => s ? { ...s, events: s.events + 1 } : s);
+      wsClient.subscribe("TELEMETRY_UPDATE", (msg: WebSocketMessage) => {
+         if (!msg.telemetry) return;
+         setBatteryData(prev => {
+            const next = [...prev];
+            const idx = next.findIndex(x => x.name.includes(msg.asset_id!.split('-')[0]));
+            if (idx >= 0) {
+               next[idx].battery = msg.telemetry!.battery_pct;
+            }
+            return next;
+         });
       }),
-      wsClient.subscribe("TELEMETRY_UPDATE", (msg) => {
-        setFleetBattery(prev => {
-           const next = [...prev];
-           const idx = next.findIndex(a => a.id === msg.asset_id);
-           if(idx !== -1) {
-             next[idx].battery = msg.telemetry.battery_pct;
-           }
-           return next;
-        });
+      wsClient.subscribe("EVENT_NEW", (msg: WebSocketMessage) => {
+         setStats(s => ({ ...s, recentEvents: s.recentEvents + 1 }));
       })
     ];
     return () => unsubs.forEach(u => u());
@@ -81,7 +86,7 @@ export default function Overview() {
         <div className="card-body">
           <div className="status-indicator">
             <span className="status-label">Backend</span>
-            {backendOk ? <span className="status-value ok">Operational</span> : <span className="status-value error">Unavailable</span>}
+            {stats !== null ? <span className="status-value ok">Operational</span> : <span className="status-value error">Unavailable</span>}
           </div>
           <div className="status-indicator">
             <span className="status-label">Database</span>
@@ -89,26 +94,31 @@ export default function Overview() {
           </div>
           <div className="status-indicator">
             <span className="status-label">SVI Stream</span>
-            {fleetBattery.some(b => b.battery > 0) ? <span className="status-value ok">Active</span> : <span className="status-value unknown">No active telemetry</span>}
+            {batteryData.some(b => b.battery > 0) ? <span className="status-value ok">Active</span> : <span className="status-value unknown">No active telemetry</span>}
           </div>
         </div>
       </div>
 
-      {backendOk && stats && (
+      {stats && (
         <div className="stat-grid">
           <div className="stat-card">
             <div className="stat-label">Registered Assets</div>
-            <div className="stat-value">{stats.assets}</div>
+            <div className="stat-value">{stats.totalAssets}</div>
             <div className="stat-sub">UGV · UAV · AUV</div>
           </div>
           <div className="stat-card">
-            <div className="stat-label">Missions</div>
-            <div className="stat-value">{stats.missions}</div>
-            <div className="stat-sub">Total in database</div>
+            <div className="stat-label">Connected Assets</div>
+            <div className="stat-value" style={{ color: 'var(--green)' }}>{stats.connectedAssets}</div>
+            <div className="stat-sub">Active connections</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">Active Missions</div>
+            <div className="stat-value">{stats.activeMissions}</div>
+            <div className="stat-sub">Running operations</div>
           </div>
           <div className="stat-card">
             <div className="stat-label">System Events</div>
-            <div className="stat-value">{stats.events}</div>
+            <div className="stat-value">{stats.recentEvents}</div>
             <div className="stat-sub">Logged events</div>
           </div>
         </div>
@@ -120,14 +130,14 @@ export default function Overview() {
             <span className="card-title">Fleet Battery Levels</span>
          </div>
          <div className="card-body" style={{ height: 260 }}>
-            {fleetBattery.length === 0 ? (
+            {batteryData.length === 0 ? (
                <div className="empty-state">
                   <div className="icon">⚡️</div>
                   <div className="title">No telemetry data available</div>
                </div>
             ) : (
                <ResponsiveContainer width="100%" height="100%">
-                 <BarChart data={fleetBattery} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                 <BarChart data={batteryData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                    <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} />
                    <YAxis stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} domain={[0, 100]} />
                    <Tooltip 
@@ -135,7 +145,7 @@ export default function Overview() {
                      contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13 }} 
                    />
                    <Bar dataKey="battery" radius={[4, 4, 0, 0]}>
-                     {fleetBattery.map((entry, index) => (
+                     {batteryData.map((entry, index) => (
                        <Cell key={`cell-${index}`} fill={entry.battery > 20 ? 'var(--accent)' : 'var(--red)'} />
                      ))}
                    </Bar>
@@ -144,12 +154,6 @@ export default function Overview() {
             )}
          </div>
       </div>
-
-      {!backendOk && (
-        <div className="error-banner">
-          ⚠ Backend unavailable — ensure the backend is running on port 8000
-        </div>
-      )}
     </div>
   );
 }
