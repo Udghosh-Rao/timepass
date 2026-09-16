@@ -73,3 +73,11 @@ To run the core test suite:
 cd backend
 pytest
 ```
+
+cd "/Users/udghoshrao/Downloads/astra os /backend"
+source venv/bin/activate
+python3 seed_dev.py
+uvicorn main_dev:app --host 0.0.0.0 --port 8000
+
+cd "/Users/udghoshrao/Downloads/astra os /frontend"
+npm run dev
