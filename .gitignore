@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.env
+.venv
+venv/
+dist/
+build/
+*.db
+*.sqlite3
+
+# Alembic
+backend/alembic/versions/*.pyc
+
+# FastAPI / Uvicorn
+*.log
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+frontend/build/
+frontend/.vite/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Dev artifacts
+backend/astra_dev.db
+backend/astra_test.db
+backend/test.db
